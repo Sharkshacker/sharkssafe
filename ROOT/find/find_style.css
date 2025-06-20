@@ -121,3 +121,77 @@ body.index-page {
 .find-form input[type="submit"]:hover, .find-form button:hover {
     background-color: #005f88;
 }
+
+/* find_style.css - 모달창 스타일 추가 */
+
+.center-modal-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 85vh;
+    background: none; /* 별도의 배경 어둡게 처리 X */
+}
+.center-modal-box {
+    background: #fff;
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(70,160,220,0.13);
+    max-width: 350px;
+    min-width: 290px;
+    padding: 36px 32px 28px 32px;
+    text-align: center;
+    font-family: 'Pretendard', Arial, sans-serif;
+    margin: 40px auto 0 auto;
+}
+.center-modal-box h1 {
+    color: #111b28;
+    margin-bottom: 18px;
+    font-size: 2em;
+    font-weight: bold;
+    letter-spacing: 0.02em;
+}
+.center-modal-box .desc {
+    color: #222;
+    font-size: 1.08em;
+    margin-bottom: 18px;
+    word-break: keep-all;
+}
+.center-modal-box .desc small {
+    color: #526986;
+    font-size: 0.97em;
+    margin-top: 5px;
+    display: block;
+}
+.center-modal-box .modal-input {
+    width: 78%;
+    padding: 12px 11px;
+    margin: 8px 0 16px 0;
+    font-size: 1.07em;
+    border: 1.5px solid #79c4ec;
+    border-radius: 8px;
+    outline: none;
+    background: #f7fbfd;
+    color: #222;
+}
+.center-modal-box .modal-btn {
+    width: 83%;
+    padding: 12px 0;
+    border: none;
+    border-radius: 9px;
+    background: #8ed2f7;
+    color: #222;
+    font-size: 1.1em;
+    font-weight: bold;
+    margin-top: 4px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.center-modal-box .modal-btn:hover {
+    background: #56b6e2;
+    color: #fff;
+}
+.center-modal-box .temp-pw {
+    color: #2777b3;
+    font-weight: bold;
+    font-size: 1.09em;
+    letter-spacing: 0.04em;
+}
