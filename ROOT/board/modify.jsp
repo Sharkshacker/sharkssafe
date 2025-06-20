@@ -1,10 +1,23 @@
 <%@ page contentType="text/html; charset=UTF-8" pageEncoding="UTF-8" %>
-<%@ page import="java.sql.*, java.io.*, javax.servlet.http.* , java.nio.file.Paths" %>
+<%@ page import="java.sql.*, java.io.*, javax.servlet.http.*, javax.servlet.*, java.nio.file.Paths" %>
 <%@ include file="../db.jsp" %>
+
+<%!
+    // HTML 태그 이스케이프 함수 (XSS 대응)
+    public static String escapeHtml(String s) {
+        if (s == null) return "";
+        return s.replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
+                .replace("'", "&#x27;");
+    }
+%>
+
 <%
-    // 취약: 로그인만 되어 있으면 누구나 수정 가능 (권한 인가 우회)
     String username = (String) session.getAttribute("username");
-    if (username == null) {
+    Integer userIdx = (Integer) session.getAttribute("idx");
+    if (username == null || userIdx == null) {
 %>
 <script>
     alert('로그인 후 이용해주세요.');
@@ -27,7 +40,7 @@
         return;
     }
 
-    // 취약: 글 작성자 검증 생략 (권한 인가 우회)
+    // 작성자 검증 (권한 인가 강화)
     PreparedStatement ps = db_conn.prepareStatement("SELECT * FROM board_table WHERE board_idx = ?");
     ps.setInt(1, id);
     ResultSet board = ps.executeQuery();
@@ -41,50 +54,64 @@
         return;
     }
 
+    int writerIdx = board.getInt("user_idx");
+    boolean isAdmin = "admin".equals(username);
+    if (userIdx != writerIdx && !isAdmin) {
+%>
+<script>
+    alert('수정 권한이 없습니다.');
+    location.href = '../index.jsp';
+</script>
+<%
+        return;
+    }
+
+    // POST 요청 처리
     if ("POST".equalsIgnoreCase(request.getMethod())) {
         request.setCharacterEncoding("UTF-8");
-        String title = request.getParameter("title");
-        String content = request.getParameter("content");
+        String title = escapeHtml(request.getParameter("title"));    // XSS 대응
+        String content = escapeHtml(request.getParameter("content")); // XSS 대응
         boolean secret = "1".equals(request.getParameter("secret"));
         boolean deleteFile = "1".equals(request.getParameter("delete_file"));
 
-        String board_file = board.getString("board_file");
-        String board_file_original_name = board.getString("board_file_original_name");
-        String uploadDir = application.getRealPath("/userupload/");
+        // 파일(blob) 처리
+        InputStream fileBlob = null;
+        String fileOriginalName = null;
+        String sqlUpdate;
+        if (deleteFile) {
+            sqlUpdate = "UPDATE board_table SET board_title=?, board_content=?, board_file_blob=NULL, board_file_original_name=NULL, board_secret=? WHERE board_idx=?";
+            PreparedStatement update = db_conn.prepareStatement(sqlUpdate);
+            update.setString(1, title);
+            update.setString(2, content);
+            update.setBoolean(3, secret);
+            update.setInt(4, id);
+            update.executeUpdate();
+        } else {
+            Part filePart = request.getPart("uploaded_file");
+            if (filePart != null && filePart.getSize() > 0) {
+                fileBlob = filePart.getInputStream();
+                fileOriginalName = Paths.get(filePart.getSubmittedFileName()).getFileName().toString();
 
-        if (deleteFile && board_file != null && !board_file.isEmpty()) {
-            File oldFile = new File(uploadDir + File.separator + board_file);
-            if (oldFile.exists()) oldFile.delete();
-            board_file = "";
-            board_file_original_name = "";
+                sqlUpdate = "UPDATE board_table SET board_title=?, board_content=?, board_file_blob=?, board_file_original_name=?, board_secret=? WHERE board_idx=?";
+                PreparedStatement update = db_conn.prepareStatement(sqlUpdate);
+                update.setString(1, title);
+                update.setString(2, content);
+                update.setBlob(3, fileBlob);
+                update.setString(4, fileOriginalName);
+                update.setBoolean(5, secret);
+                update.setInt(6, id);
+                update.executeUpdate();
+            } else {
+                // 파일 업로드 없이 텍스트만 수정
+                sqlUpdate = "UPDATE board_table SET board_title=?, board_content=?, board_secret=? WHERE board_idx=?";
+                PreparedStatement update = db_conn.prepareStatement(sqlUpdate);
+                update.setString(1, title);
+                update.setString(2, content);
+                update.setBoolean(3, secret);
+                update.setInt(4, id);
+                update.executeUpdate();
+            }
         }
-
-        Part filePart = request.getPart("uploaded_file");
-        if (filePart != null && filePart.getSize() > 0) {
-            File dir = new File(uploadDir);
-            if (!dir.exists()) dir.mkdirs();
-
-            String originalName = Paths.get(filePart.getSubmittedFileName()).getFileName().toString();
-            String ext = originalName.substring(originalName.lastIndexOf('.') + 1);
-            String newFileName = "file_" + System.currentTimeMillis() + "." + ext;
-            File uploadedFile = new File(uploadDir, newFileName);
-            filePart.write(uploadedFile.getAbsolutePath());
-
-            board_file = newFileName;
-            board_file_original_name = originalName;
-        }
-
-        // 취약: XSS 필터링 없음 (Stored XSS)
-        PreparedStatement update = db_conn.prepareStatement(
-            "UPDATE board_table SET board_title=?, board_content=?, board_file=?, board_file_original_name=?, board_secret=? WHERE board_idx=?"
-        );
-        update.setString(1, title);  // <script> 삽입 가능
-        update.setString(2, content); // <script> 삽입 가능
-        update.setString(3, board_file);
-        update.setString(4, board_file_original_name);
-        update.setBoolean(5, secret);
-        update.setInt(6, id);
-        update.executeUpdate();
 %>
 <script>
     alert('수정 완료되었습니다!');
@@ -112,11 +139,11 @@
         <table class="writeTable">
             <tr>
                 <th width="50">제목</th>
-                <td><input type="text" name="title" value="<%= board.getString("board_title") %>" required></td>
+                <td><input type="text" name="title" value="<%= escapeHtml(board.getString("board_title")) %>" required></td>
             </tr>
             <tr>
                 <th>내용</th>
-                <td><textarea name="content" rows="5" cols="40" required><%= board.getString("board_content") %></textarea></td>
+                <td><textarea name="content" rows="5" cols="40" required><%= escapeHtml(board.getString("board_content")) %></textarea></td>
             </tr>
             <tr>
                 <th>파일 업로드</th>
@@ -126,7 +153,7 @@
                         String currentFileName = board.getString("board_file_original_name");
                         if (currentFileName != null && !currentFileName.isEmpty()) {
                     %>
-                        <br/><small>현재 파일: <%= currentFileName %></small>
+                        <br/><small>현재 파일: <%= escapeHtml(currentFileName) %></small>
                         <div>
                             <input type="checkbox" name="delete_file" value="1" id="delete_file_cb" />
                             <label for="delete_file_cb">기존 파일 삭제</label>
@@ -150,3 +177,8 @@
 <script src="../js/modal.js"></script>
 </body>
 </html>
+<%
+    try { if (board != null) board.close(); } catch(Exception e) {}
+    try { if (ps != null) ps.close(); } catch(Exception e) {}
+    try { if (db_conn != null) db_conn.close(); } catch(Exception e) {}
+%>

@@ -2,6 +2,17 @@
 <%@ page import="java.sql.*, javax.servlet.http.*, javax.servlet.*" %>
 <%@ include file="db.jsp" %>
 
+<%!
+    public static String escapeHtml(String s) {
+        if (s == null) return "";
+        return s.replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
+                .replace("'", "&#x27;");
+    }
+%>
+
 <%
     String username = (String) session.getAttribute("username");
     if (username == null) {
@@ -23,27 +34,38 @@
     if (sortBy == null) sortBy = "latest";
 
     String whereClause = "";
-    if (!query.isEmpty()) {
-        if ("title".equals(searchBy)) {
-            whereClause = "WHERE board_title LIKE '%" + query + "%'";
-        } else if ("number".equals(searchBy) && query.matches("\\d+")) {
-            whereClause = "WHERE board_idx = " + query;
-        }
-    }
-
-    // 관리자글 상단 정렬(공지)
-    String orderBy = "ORDER BY notice_order ASC, board_idx DESC";
-    if ("oldest".equals(sortBy)) orderBy = "ORDER BY notice_order ASC, board_idx ASC";
-    else if ("views".equals(sortBy)) orderBy = "ORDER BY notice_order ASC, board_views DESC";
-
     String sql =
         "SELECT b.*, u.user_id, " +
         "CASE WHEN u.user_id = 'admin' THEN 1 ELSE 2 END AS notice_order " +
         "FROM board_table b " +
-        "JOIN user_table u ON b.user_idx = u.user_idx " +
-        whereClause + " " + orderBy;
+        "JOIN user_table u ON b.user_idx = u.user_idx ";
+
+    boolean hasQuery = false;
+    if (!query.isEmpty()) {
+        if ("title".equals(searchBy)) {
+            whereClause = "WHERE board_title LIKE ?";
+            hasQuery = true;
+        } else if ("number".equals(searchBy) && query.matches("\\d+")) {
+            whereClause = "WHERE board_idx = ?";
+            hasQuery = true;
+        }
+    }
+
+    String orderBy = "ORDER BY notice_order ASC, board_idx DESC";
+    if ("oldest".equals(sortBy)) orderBy = "ORDER BY notice_order ASC, board_idx ASC";
+    else if ("views".equals(sortBy)) orderBy = "ORDER BY notice_order ASC, board_views DESC";
+
+    sql = sql + whereClause + " " + orderBy;
 
     PreparedStatement stmt = db_conn.prepareStatement(sql);
+    int paramIdx = 1;
+    if (hasQuery) {
+        if ("title".equals(searchBy)) {
+            stmt.setString(paramIdx++, "%" + query + "%");
+        } else if ("number".equals(searchBy) && query.matches("\\d+")) {
+            stmt.setInt(paramIdx++, Integer.parseInt(query));
+        }
+    }
     ResultSet rs = stmt.executeQuery();
 %>
 
@@ -72,7 +94,7 @@
                     <option value="oldest" <%= "oldest".equals(sortBy) ? "selected" : "" %>>오래된순</option>
                     <option value="views" <%= "views".equals(sortBy) ? "selected" : "" %>>조회수순</option>
                 </select>
-                <input type="text" name="query" placeholder="검색어 입력" value="<%= query %>">
+                <input type="text" name="query" placeholder="검색어 입력" value="<%= escapeHtml(query) %>">
                 <input type="submit" value="검색">
             </form>
             <button class="write-button" onclick="location.href = 'board/write.jsp'">글쓰기</button>
@@ -93,22 +115,24 @@
                     String title = rs.getString("board_title");
                     String date = rs.getString("board_date");
                     int views = rs.getInt("board_views");
-                    String author = rs.getString("user_id"); // JOIN 결과에서 바로 가져옴
+                    String author = rs.getString("user_id");
                     int secret = rs.getInt("board_secret");
 
-                    String displayTitle = title;
+                    String displayTitle = "";
                     if (secret == 1) {
-                        displayTitle = "<span style='color:#f15c6f;font-weight:bold'>[비밀글입니다]</span> ";
-                    }
-                    if ("admin".equals(author)) {
-                        displayTitle = "<span style='color:#2a6bff;font-weight:bold'>[공지]</span> " + displayTitle;
+                        displayTitle = "<span style='color:#f15c6f;font-weight:bold'>[비밀글입니다]</span>";
+                    } else {
+                        if ("admin".equals(author)) {
+                            displayTitle += "<span style='color:#2a6bff;font-weight:bold'>[공지]</span> ";
+                        }
+                        displayTitle += escapeHtml(title);
                     }
             %>
             <tr>
                 <td><%= idx %></td>
                 <td><a href="board/view.jsp?id=<%= idx %>"><%= displayTitle %></a></td>
-                <td><%= author %></td>
-                <td><%= date %></td>
+                <td><%= escapeHtml(author) %></td>
+                <td><%= escapeHtml(date) %></td>
                 <td><%= views %></td>
             </tr>
             <%

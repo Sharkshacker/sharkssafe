@@ -1,7 +1,17 @@
 <%@ page contentType="text/html; charset=UTF-8" pageEncoding="UTF-8" %>
-<%@ page import="java.sql.*, javax.servlet.http.*, javax.servlet.*" %>
+<%@ page import="java.sql.*, javax.servlet.http.*, javax.servlet.*, java.io.InputStream" %>
 <%@ include file="../db.jsp" %>
 
+<%!
+    public static String escapeHtml(String s) {
+        if (s == null) return "";
+        return s.replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
+                .replace("'", "&#x27;");
+    }
+%>
 
 <%
     String username = (String) session.getAttribute("username");
@@ -56,13 +66,22 @@
         String date = rs.getString("board_date");
         int views = rs.getInt("board_views");
         int secret = rs.getInt("board_secret");
-        String file = rs.getString("board_file");
+        InputStream blob = rs.getBinaryStream("board_file_blob");
         String originName = rs.getString("board_file_original_name");
 
         boolean isAuthor = (writerIdx == userIdx);
         boolean isAdmin = "admin".equals(username);
 
-        
+        // 비밀글 권한 체크
+        if (secret == 1 && !(isAuthor || isAdmin)) {
+%>
+    <script>
+        alert('비밀글입니다. 권한이 없습니다.');
+        location.href = '../index.jsp';
+    </script>
+<%
+            return;
+        }
 
         // 조회수 증가
         stmt.executeUpdate("UPDATE board_table SET board_views = board_views + 1 WHERE board_idx = " + id);
@@ -87,32 +106,28 @@
     <jsp:include page="../nav.jsp" />
 
     <div class="view">
-        <h2><%= title %></h2>
+        <h2><%= escapeHtml(title) %></h2>
         <div class="user_info">
-            <p><b>작성자</b> <%= writerId %> | <%= date %> | <b>조회수</b> <%= views %></p>
+            <p><b>작성자</b> <%= escapeHtml(writerId) %> | <%= escapeHtml(date) %> | <b>조회수</b> <%= views %></p>
         </div>
-
         <hr>
         <div class="content">
-            <%
-                out.println(content);
-            %>  
+            <%= escapeHtml(content).replaceAll("\n", "<br>") %>
         </div>
 
-        <% if (file != null && !file.isEmpty()) { %>
-        <div class="attachment">
-            <p>
-                <b>첨부파일:</b>
-                <a href="../userupload/<%= file %>" target="_blank">
-                    <%= originName != null && !originName.isEmpty() ? originName : file %>
-                </a>
-                &nbsp;
-                ( <a href="download.jsp?file=<%= java.net.URLEncoder.encode(file, "UTF-8") %>&origin=<%= java.net.URLEncoder.encode(originName, "UTF-8") %>">
-                    다운로드
-                  </a> )
-            </p>
-        </div>
-        <% } %>
+        <%-- 첨부파일 영역 (자바 블록으로 감싸기) --%>
+        <%
+        if (blob != null && originName != null && !originName.isEmpty()) {
+        %>
+            <div class="attachment">
+                <p>
+                    <b>첨부파일:</b>
+                    <a href="download.jsp?id=<%= id %>" target="_blank"><%= escapeHtml(originName) %></a>
+                </p>
+            </div>
+        <%
+        }
+        %>
 
         <div class="viewButton">
             <ul>
@@ -137,7 +152,7 @@
 
 <%
     } catch (Exception e) {
-        out.println("DB 오류: " + e.getMessage());
+        out.println("DB 오류: " + escapeHtml(e.getMessage()));
     } finally {
         try { if (rs != null) rs.close(); } catch (Exception e) {}
         try { if (userRs != null) userRs.close(); } catch (Exception e) {}

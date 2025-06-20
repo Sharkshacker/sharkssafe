@@ -2,6 +2,19 @@
 <%@ page import="java.sql.*, java.io.*" %>
 <%@ include file="../db.jsp" %>
 <%
+    // 로그인 체크
+    String username = (String) session.getAttribute("username");
+    Integer userIdx = (Integer) session.getAttribute("idx");
+    if (username == null || userIdx == null) {
+%>
+<script>
+    alert('로그인 후 이용해주세요.');
+    location.href = '../passlogic/login.jsp';
+</script>
+<%
+        return;
+    }
+
     // 게시글 ID 파라미터 처리
     int id = 0;
     try {
@@ -15,7 +28,6 @@
 <%
         return;
     }
-
     if (id == 0) {
 %>
 <script>
@@ -26,19 +38,42 @@
         return;
     }
 
-    // 파일 경로 불러오기
-    String query = "SELECT board_file FROM board_table WHERE board_idx = ?";
+    // 게시글 조회
+    String query = "SELECT user_idx, board_file FROM board_table WHERE board_idx = ?";
     PreparedStatement ps = db_conn.prepareStatement(query);
     ps.setInt(1, id);
     ResultSet rs = ps.executeQuery();
 
-    if (rs.next()) {
-        String boardFile = rs.getString("board_file");
-        if (boardFile != null && !boardFile.isEmpty()) {
-            String uploadDir = application.getRealPath("../userupload/");
-            File file = new File(uploadDir + File.separator + boardFile);
-            if (file.exists()) file.delete();
-        }
+    if (!rs.next()) {
+%>
+<script>
+    alert('존재하지 않는 게시글입니다.');
+    location.href = '../index.jsp';
+</script>
+<%
+        return;
+    }
+
+    int writerIdx = rs.getInt("user_idx");
+    String boardFile = rs.getString("board_file");
+    boolean isAdmin = "admin".equals(username);
+
+    // 인가(Authorization) 체크 - 작성자 또는 관리자만 삭제 가능
+    if (userIdx != writerIdx && !isAdmin) {
+%>
+<script>
+    alert('삭제 권한이 없습니다.');
+    location.href = '../index.jsp';
+</script>
+<%
+        return;
+    }
+
+    // 파일 삭제 (파일 존재 시)
+    if (boardFile != null && !boardFile.isEmpty()) {
+        String uploadDir = application.getRealPath("../userupload/");
+        File file = new File(uploadDir + File.separator + boardFile);
+        if (file.exists()) file.delete();
     }
 
     // 게시글 삭제
@@ -61,4 +96,10 @@
 </script>
 <%
     }
+
+    // 자원 해제
+    try { if (rs != null) rs.close(); } catch(Exception e) {}
+    try { if (ps != null) ps.close(); } catch(Exception e) {}
+    try { if (deletePs != null) deletePs.close(); } catch(Exception e) {}
+    try { if (db_conn != null) db_conn.close(); } catch(Exception e) {}
 %>
