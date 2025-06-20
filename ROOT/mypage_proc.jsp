@@ -1,27 +1,27 @@
 <%@ page contentType="text/html; charset=UTF-8" pageEncoding="UTF-8" %>
-<%@ page import="java.sql.*, java.util.*, java.util.regex.*, java.io.*" %>
+<%@ page import="java.sql.*, java.util.*, java.util.regex.*, java.io.*, java.security.MessageDigest" %>
 <%@ page import="jakarta.servlet.http.Part" %>
 <%@ include file="db.jsp" %>
 <%
     request.setCharacterEncoding("UTF-8");
-
-    // ===== 이미지 검증 유틸리티 함수 =====
 %>
 <%! 
-    private static final String[] BLOCKED_EXT = {
-    "jspx", "php", "asp", "aspx", "exe", "bat", "sh", "js", "html", "htm", "phtml", "cgi"
+    private static final String[] ALLOWED_EXT = {
+        "jpg", "jpeg", "png", "gif", "bmp", "webp"
     };
-    private static final String[] ALLOWED_MIME = {"image/jpeg", "image/png", "image/gif", "image/bmp", "image/webp"};
+    private static final String[] ALLOWED_MIME = {
+        "image/jpeg", "image/png", "image/gif", "image/bmp", "image/webp"
+    };
 
-    private boolean checkExtension(String filename) {
+    private boolean checkAllowedExt(String filename) {
         if (filename == null) return false;
         String lower = filename.toLowerCase();
-        for (String ext : BLOCKED_EXT) {
+        for (String ext : ALLOWED_EXT) {
             if (lower.endsWith("." + ext)) return true;
         }
         return false;
     }
-    private boolean checkMimeType(String mime) {
+    private boolean checkAllowedMime(String mime) {
         if (mime == null) return false;
         for (String m : ALLOWED_MIME) {
             if (mime.equalsIgnoreCase(m)) return true;
@@ -43,6 +43,15 @@
         // WebP: 52 49 46 46....57 45 42 50
         if (buf[0]==(byte)0x52 && buf[1]==(byte)0x49 && buf[2]==(byte)0x46 && buf[3]==(byte)0x46) return true;
         return false;
+    }
+    private String sha512(String pw) throws Exception {
+        MessageDigest md = MessageDigest.getInstance("SHA-512");
+        byte[] bytes = md.digest(pw.getBytes("UTF-8"));
+        StringBuilder sb = new StringBuilder();
+        for (byte b : bytes) {
+            sb.append(String.format("%02x", b));
+        }
+        return sb.toString();
     }
 %>
 <%
@@ -82,6 +91,7 @@
     String phoneNum = request.getParameter("phonenum");
     int idx = session.getAttribute("idx") != null ? Integer.parseInt(session.getAttribute("idx").toString()) : 0;
     String removeFlag = request.getParameter("removeImage") != null ? request.getParameter("removeImage") : "0";
+    String pw = request.getParameter("pw");
 
     // ★ 이름 중복 체크 ★
     String dupSql = "SELECT COUNT(*) AS cnt FROM user_table WHERE user_id = ? AND user_idx != ?";
@@ -131,29 +141,23 @@
     }
 
     String sql = null;
-    String profileImagePath = null;
+    InputStream imageBlob = null;
+    String imageFileName = null;
 
-    // 기존 이미지 제거 요청
+    // 기존 이미지 제거 요청 (DB의 blob 제거)
     if ("1".equals(removeFlag)) {
-        String oldProfileImage = (String) session.getAttribute("profile_image");
-        if (oldProfileImage != null && !oldProfileImage.isEmpty()) {
-            File imgFile = new File(application.getRealPath("/") + oldProfileImage);
-            if (imgFile.exists()) {
-                imgFile.delete();
-            }
-        }
-        sql = "UPDATE user_table SET user_id = ?, user_email = ?, user_phonenum = ?, profile_image = NULL WHERE user_idx = ?";
+        sql = "UPDATE user_table SET user_id = ?, user_email = ?, user_phonenum = ?, profile_image_blob = NULL, profile_image_name = NULL WHERE user_idx = ?";
     }
-    // 새 이미지 업로드 (여기서 검증!)
+    // 새 이미지 업로드 (blob으로 저장, 화이트리스트 기반 검증)
     else if (request.getPart("profileImage") != null && request.getPart("profileImage").getSize() > 0) {
         Part imageFile = request.getPart("profileImage");
         String fileName = imageFile.getSubmittedFileName();
 
         // [1] 확장자 체크
-        if (checkExtension(fileName)) {
+        if (!checkAllowedExt(fileName)) {
 %>
             <script>
-                alert('이미지 파일만 업로드할 수 있습니다. (확장자)');
+                alert('이미지 파일만 업로드할 수 있습니다.');
                 history.back();
             </script>
 <%
@@ -162,10 +166,10 @@
 
         // [2] MIME 타입 체크
         String mimeType = imageFile.getContentType();
-        if (!checkMimeType(mimeType)) {
+        if (!checkAllowedMime(mimeType)) {
 %>
             <script>
-                alert('이미지 파일만 업로드할 수 있습니다. (MIME)');
+                alert('이미지 파일만 업로드할 수 있습니다.');
                 history.back();
             </script>
 <%
@@ -178,7 +182,7 @@
             imgIs.close();
 %>
             <script>
-                alert('실제 이미지 파일만 업로드할 수 있습니다. (Magic Number)');
+                alert('실제 이미지 파일만 업로드할 수 있습니다.');
                 history.back();
             </script>
 <%
@@ -186,23 +190,40 @@
         }
         imgIs.close();
 
-        String uploadDir = application.getRealPath("/") + "userupload/";
-        File dir = new File(uploadDir);
-        if (!dir.exists()) dir.mkdirs();
-        String uploadPath = uploadDir + fileName;
-        imageFile.write(uploadPath);
-        profileImagePath = "userupload/" + fileName;
+        // BLOB로 저장
+        imageBlob = imageFile.getInputStream();
+        imageFileName = fileName;
 
-        sql = "UPDATE user_table SET user_id = ?, user_email = ?, user_phonenum = ?, profile_image = ? WHERE user_idx = ?";
+        sql = "UPDATE user_table SET user_id = ?, user_email = ?, user_phonenum = ?, profile_image_blob = ?, profile_image_name = ? WHERE user_idx = ?";
     }
-    // 비밀번호 변경
-    else {
-        String pw = request.getParameter("pw");
-        if (pw != null && !pw.isEmpty()) {
-            sql = "UPDATE user_table SET user_id = ?, user_email = ?, user_phonenum = ?, user_password = ? WHERE user_idx = ?";
-        } else {
-            sql = "UPDATE user_table SET user_id = ?, user_email = ?, user_phonenum = ? WHERE user_idx = ?";
+    // 비밀번호 변경만
+    else if (pw != null && !pw.isEmpty()) {
+        // 1. 아이디와 동일한 비밀번호 방지
+        if (pw.equals(username)) {
+%>
+            <script>
+                alert('비밀번호는 아이디와 동일하게 설정할 수 없습니다.');
+                history.back();
+            </script>
+<%
+            return;
         }
+        // 2. SHA-512 해시 적용
+        String hashedPw = "";
+        try {
+            hashedPw = sha512(pw);
+        } catch (Exception e) {
+%>
+            <script>
+                alert('비밀번호 해싱 중 오류가 발생했습니다.');
+                history.back();
+            </script>
+<%
+            return;
+        }
+        sql = "UPDATE user_table SET user_id = ?, user_email = ?, user_phonenum = ?, user_password = ? WHERE user_idx = ?";
+    } else {
+        sql = "UPDATE user_table SET user_id = ?, user_email = ?, user_phonenum = ? WHERE user_idx = ?";
     }
 
     PreparedStatement pstmt = null;
@@ -214,33 +235,32 @@
             pstmt.setString(2, email);
             pstmt.setString(3, phoneNum);
             pstmt.setInt(4, idx);
-        } else if (profileImagePath != null) {
+        } else if (imageBlob != null) {
             pstmt = db_conn.prepareStatement(sql);
             pstmt.setString(1, username);
             pstmt.setString(2, email);
             pstmt.setString(3, phoneNum);
-            pstmt.setString(4, profileImagePath);
+            pstmt.setBlob(4, imageBlob);
+            pstmt.setString(5, imageFileName);
+            pstmt.setInt(6, idx);
+        } else if (pw != null && !pw.isEmpty()) {
+            pstmt = db_conn.prepareStatement(sql);
+            pstmt.setString(1, username);
+            pstmt.setString(2, email);
+            pstmt.setString(3, phoneNum);
+            pstmt.setString(4, sha512(pw)); // SHA-512 해시 적용
             pstmt.setInt(5, idx);
         } else {
-            String pw = request.getParameter("pw");
-            if (pw != null && !pw.isEmpty()) {
-                pstmt = db_conn.prepareStatement(sql);
-                pstmt.setString(1, username);
-                pstmt.setString(2, email);
-                pstmt.setString(3, phoneNum);
-                pstmt.setString(4, pw);
-                pstmt.setInt(5, idx);
-            } else {
-                pstmt = db_conn.prepareStatement(sql);
-                pstmt.setString(1, username);
-                pstmt.setString(2, email);
-                pstmt.setString(3, phoneNum);
-                pstmt.setInt(4, idx);
-            }
+            pstmt = db_conn.prepareStatement(sql);
+            pstmt.setString(1, username);
+            pstmt.setString(2, email);
+            pstmt.setString(3, phoneNum);
+            pstmt.setInt(4, idx);
         }
         result = pstmt.executeUpdate();
     } finally {
         if (pstmt != null) pstmt.close();
+        if (imageBlob != null) imageBlob.close();
     }
 
     if (result > 0) {
@@ -250,8 +270,8 @@
         session.setAttribute("phonenum", phoneNum);
         if ("1".equals(removeFlag)) {
             session.removeAttribute("profile_image");
-        } else if (profileImagePath != null) {
-            session.setAttribute("profile_image", profileImagePath);
+        } else if (imageFileName != null) {
+            session.setAttribute("profile_image", "profile_image_view.jsp?uid=" + idx);
         }
 %>
         <script>

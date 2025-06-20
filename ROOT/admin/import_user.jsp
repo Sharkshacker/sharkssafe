@@ -1,16 +1,38 @@
 <%@ page contentType="text/html; charset=UTF-8" pageEncoding="UTF-8" %>
 <%@ page import="javax.xml.parsers.*, org.w3c.dom.*" %>
 <%
+
+    // ★ 관리자 인증 강제
+    String username = (String) session.getAttribute("username");
+    if (username == null || !"admin".equals(username)) {
+%>
+<script>
+    alert('관리자만 접근 가능합니다.');
+    location.href = '../index.jsp';
+</script>
+<%
+        return;
+    }
+
     String result = "";
-    if ("POST".equalsIgnoreCase(request.getMethod())) {
+    String importToken = request.getParameter("csrf_token");
+    String adminCsrf = (String) session.getAttribute("admin_csrf_token");
+
+   if ("POST".equalsIgnoreCase(request.getMethod())) {
+    if (adminCsrf == null || importToken == null || !adminCsrf.equals(importToken)) {
+        result = "잘못된 접근입니다..";
+    } else {
         String xml = request.getParameter("xml");
         if (xml != null) {
             try {
-                // [취약점!] 외부 엔티티 해제하지 않음
+                // XXE 완전 차단
                 DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
-                dbf.setFeature("http://apache.org/xml/features/disallow-doctype-decl", false);
-                dbf.setFeature("http://xml.org/sax/features/external-general-entities", true);
-                dbf.setFeature("http://xml.org/sax/features/external-parameter-entities", true);
+                dbf.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+                dbf.setFeature("http://xml.org/sax/features/external-general-entities", false);
+                dbf.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+                dbf.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
+                dbf.setXIncludeAware(false);
+                dbf.setExpandEntityReferences(false);
 
                 DocumentBuilder db = dbf.newDocumentBuilder();
                 Document doc = db.parse(new java.io.ByteArrayInputStream(xml.getBytes("UTF-8")));
@@ -41,7 +63,6 @@
                     } else if (msg.contains("External entity")) {
                         result = "파싱 오류: 외부 엔티티를 불러오는 과정에서 문제가 발생했습니다.";
                     } else {
-                        // 그 밖의 예외는 영어로 같이 보여주기
                         result = "파싱 오류: " + msg;
                     }
                 } else {
@@ -50,6 +71,8 @@
             }
         }
     }
+}
+
 %>
 <!DOCTYPE html>
 <html>

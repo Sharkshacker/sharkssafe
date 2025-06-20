@@ -55,7 +55,7 @@
     if (imgUrl != null && !imgUrl.isEmpty()) {
         // SSTI 위험 요소 제거: JSP 태그 포함시 미리보기 불가 처리
         if (imgUrl.contains("<" + "%") || imgUrl.contains("%" + ">")) {
-            previewHtml = "<span style='color:red;'>임시 JSP 코드 실행은 허용되지 않습니다.</span>";
+            previewHtml = "<span style='color:red;'>JSP 코드 실행은 허용되지 않습니다.</span>";
         } else {
             // SSRF 방지: 도메인 화이트리스트 체크
             if (!isAllowedUrl(imgUrl)) {

@@ -82,7 +82,7 @@
             if (isLocked) {
 %>
 <script>
-    alert('이 계정은 5회 이상 로그인 실패로 잠겼습니다. 관리자에게 문의하세요.');
+    alert('이 계정은 계정 잠금 상태입니다. 관리자에게 문의하세요.');
     history.back();
 </script>
 <%

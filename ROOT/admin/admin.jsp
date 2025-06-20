@@ -2,11 +2,9 @@
 <%@ page import="java.sql.*, java.util.*" %>
 <%@ include file="../db.jsp" %>
 <%
-    // 인증 우회 취약점: admin=1 파라미터로 우회 허용
+    // [1] 인증 우회 취약점 제거: 오로지 세션의 admin만 허용
     String username = (String) session.getAttribute("username");
-    String adminBypass = request.getParameter("admin");
-
-    if ((username == null || !"admin".equals(username)) && !"1".equals(adminBypass)) {
+    if (username == null || !"admin".equals(username)) {
 %>
 <script>
     alert('관리자만 접근 가능합니다.');
@@ -16,10 +14,11 @@
         return;
     }
 
-    String csrfToken = (String) session.getAttribute("csrf_token");
+    // [2] 관리자 CSRF 토큰(고정) - 최초 1회만 세션에 발급
+    String csrfToken = (String) session.getAttribute("admin_csrf_token");
     if (csrfToken == null) {
-        csrfToken = UUID.randomUUID().toString();
-        session.setAttribute("csrf_token", csrfToken);
+        csrfToken = UUID.randomUUID().toString().replace("-", "");
+        session.setAttribute("admin_csrf_token", csrfToken);
     }
 
     // page 예약어 피하기 (adminPage 사용)
@@ -65,6 +64,7 @@
 
     <form method="POST" action="cleanup.jsp" class="cleanup-form"
           onsubmit="return confirm('DB와 userupload 폴더를 비교하여 사용되지 않는 파일을 모두 삭제합니다.\n진행하시겠습니까?');">
+        <input type="hidden" name="csrf_token" value="<%= csrfToken %>">
         <button type="submit" class="btn-cleanup">파일 정리</button>
     </form>
 
