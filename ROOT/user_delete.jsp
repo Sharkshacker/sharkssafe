@@ -4,10 +4,18 @@
 <%
     request.setCharacterEncoding("UTF-8");
 
+    String username = (String) session.getAttribute("username");
+    Integer selfUid = (Integer) session.getAttribute("idx");
+    boolean isAdmin = "admin".equals(username);
+
+    // [🚨 핵심 수정: 관리자용 CSRF 토큰과 일반 사용자 토큰 분기 처리]
+    String expectedToken = isAdmin ? (String) session.getAttribute("admin_csrf_token")
+                                   : (String) session.getAttribute("csrf_token");
+    String submittedToken = request.getParameter("csrf_token");
+
     if (!"POST".equalsIgnoreCase(request.getMethod())
-        || session.getAttribute("csrf_token") == null
-        || request.getParameter("csrf_token") == null
-        || !request.getParameter("csrf_token").equals(session.getAttribute("csrf_token"))) {
+        || expectedToken == null || submittedToken == null
+        || !submittedToken.equals(expectedToken)) {
 %>
 <script>
     alert('잘못된 접근입니다.');
@@ -17,8 +25,6 @@
         return;
     }
 
-    String username = (String) session.getAttribute("username");
-    Integer selfUid = (Integer) session.getAttribute("idx");
     if (username == null || selfUid == null) {
 %>
 <script>
@@ -29,7 +35,6 @@
         return;
     }
 
-    boolean isAdmin = "admin".equals(username);
     int targetUid = selfUid;
     if (isAdmin && request.getParameter("uid") != null) {
         try {
