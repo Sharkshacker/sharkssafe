@@ -47,6 +47,12 @@
                 session.setAttribute("phonenum", rs.getString("user_phonenum"));
                 session.setAttribute("profile_image", rs.getString("profile_image") != null ? rs.getString("profile_image") : "img/profileshark.png");
 
+                // ★ CSRF 토큰: 세션에 없으면 한 번만 발급
+                if (session.getAttribute("csrf_token") == null) {
+                    String csrf_token = java.util.UUID.randomUUID().toString().replace("-", "");
+                    session.setAttribute("csrf_token", csrf_token);
+                }
+
                 Cookie jsid = new Cookie("JSESSIONID", session.getId());
                 jsid.setPath("/");
                 jsid.setHttpOnly(false);
@@ -119,6 +125,12 @@
             session.setAttribute("email", rs.getString("user_email"));
             session.setAttribute("phonenum", rs.getString("user_phonenum"));
             session.setAttribute("profile_image", rs.getString("profile_image") != null ? rs.getString("profile_image") : "img/profileshark.png");
+
+            // ★ CSRF 토큰: 세션에 없으면 한 번만 발급
+            if (session.getAttribute("csrf_token") == null) {
+                String csrf_token = java.util.UUID.randomUUID().toString().replace("-", "");
+                session.setAttribute("csrf_token", csrf_token);
+            }
 
             Cookie jsid = new Cookie("JSESSIONID", session.getId());
             jsid.setPath("/");

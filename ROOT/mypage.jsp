@@ -13,19 +13,18 @@
 <%
         return;
     }
-
-    // CSRF 토큰 생성
-    String csrf_token = UUID.randomUUID().toString().replace("-", "");
-    session.setAttribute("csrf_token", csrf_token);
-    
-
+    // [CSRF 토큰] 세션에 없으면 한 번만 생성
+    String csrf_token = (String) session.getAttribute("csrf_token");
+    if (csrf_token == null) {
+        csrf_token = UUID.randomUUID().toString().replace("-", "");
+        session.setAttribute("csrf_token", csrf_token);
+    }
     String profileImage = session.getAttribute("profile_image") != null
         ? (String) session.getAttribute("profile_image")
         : "img/profileshark.png";
     String email = (String) session.getAttribute("email");
     String phonenum = (String) session.getAttribute("phonenum");
 %>
-
 <!DOCTYPE html>
 <html>
 <head>

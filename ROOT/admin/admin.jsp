@@ -1,8 +1,7 @@
 <%@ page contentType="text/html; charset=UTF-8" pageEncoding="UTF-8" %>
-<%@ page import="java.sql.*, java.util.*" %>
+<%@ page import="java.sql.*, java.util.*, java.util.UUID" %>
 <%@ include file="../db.jsp" %>
 <%
-    // [1] 인증 우회 취약점 제거: 오로지 세션의 admin만 허용
     String username = (String) session.getAttribute("username");
     if (username == null || !"admin".equals(username)) {
 %>
@@ -14,14 +13,13 @@
         return;
     }
 
-    // [2] 관리자 CSRF 토큰(고정) - 최초 1회만 세션에 발급
-    String csrfToken = (String) session.getAttribute("admin_csrf_token");
+    // [CSRF 토큰 세션에 없으면 발급]
+    String csrfToken = (String) session.getAttribute("csrf_token");
     if (csrfToken == null) {
         csrfToken = UUID.randomUUID().toString().replace("-", "");
-        session.setAttribute("admin_csrf_token", csrfToken);
+        session.setAttribute("csrf_token", csrfToken);
     }
 
-    // page 예약어 피하기 (adminPage 사용)
     int adminPage = 1;
     String param = request.getParameter("page");
     if (param != null) {
@@ -29,14 +27,11 @@
     }
     int limit = 10;
     int offset = (adminPage - 1) * limit;
-
-    // 회원 목록, 총 회원 수 쿼리
     Statement stmt = db_conn.createStatement();
     ResultSet totalRes = stmt.executeQuery("SELECT COUNT(*) AS cnt FROM user_table");
     totalRes.next();
     int totalCnt = totalRes.getInt("cnt");
     int totalPages = (int) Math.ceil((double) totalCnt / limit);
-
     ResultSet userRes = stmt.executeQuery(
         "SELECT user_idx, user_id, user_email, user_phonenum " +
         "FROM user_table ORDER BY user_idx ASC " +
@@ -57,17 +52,14 @@
 
 <div class="main-box">
     <h1>회원 목록</h1>
-
     <form method="GET" action="import_user.jsp" class="import-form">
         <button type="submit" class="btn-import">회원 대량 등록</button>
     </form>
-
     <form method="POST" action="cleanup.jsp" class="cleanup-form"
           onsubmit="return confirm('DB와 userupload 폴더를 비교하여 사용되지 않는 파일을 모두 삭제합니다.\n진행하시겠습니까?');">
         <input type="hidden" name="csrf_token" value="<%= csrfToken %>">
         <button type="submit" class="btn-cleanup">파일 정리</button>
     </form>
-
     <table class="index">
         <thead>
         <tr>
@@ -88,8 +80,6 @@
                 String id = userRes.getString("user_id");
                 String email = userRes.getString("user_email");
                 String phone = userRes.getString("user_phonenum");
-
-                // 게시글 수 카운트용 Statement/ResultSet 따로!
                 Statement cntStmt = db_conn.createStatement();
                 ResultSet cntRes = cntStmt.executeQuery("SELECT COUNT(*) AS cnt FROM board_table WHERE user_idx = " + uid);
                 int postCnt = 0;

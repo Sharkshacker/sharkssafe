@@ -1,5 +1,5 @@
 <%@ page contentType="text/html; charset=UTF-8" pageEncoding="UTF-8" %>
-<%@ page import="java.sql.*, java.util.*, java.security.MessageDigest" %>
+<%@ page import="java.sql.*, java.util.*, java.security.MessageDigest, java.util.UUID" %>
 <%@ include file="../db.jsp" %>
 <%
     String username = (String) session.getAttribute("username");
@@ -11,6 +11,13 @@
 </script>
 <%
         return;
+    }
+
+    // [CSRF 토큰] 세션에 없으면 한 번만 생성
+    String csrfToken = (String) session.getAttribute("csrf_token");
+    if (csrfToken == null) {
+        csrfToken = UUID.randomUUID().toString().replace("-", "");
+        session.setAttribute("csrf_token", csrfToken);
     }
 
     int uid = 0;
@@ -51,12 +58,12 @@
 
     // POST 요청 (회원정보 수정, 잠금/해제)
     if ("POST".equalsIgnoreCase(request.getMethod())) {
-        String csrfToken = request.getParameter("csrf_token");
-        String adminToken = (String) session.getAttribute("admin_csrf_token");
-        if (adminToken == null || csrfToken == null || !adminToken.equals(csrfToken)) {
+        String reqToken = request.getParameter("csrf_token");
+        String sessToken = (String) session.getAttribute("csrf_token");
+        if (sessToken == null || reqToken == null || !sessToken.equals(reqToken)) {
 %>
 <script>
-    alert('잘못된 접근입니다..');
+    alert('잘못된 접근입니다.');
     location.href = 'admin.jsp';
 </script>
 <%
@@ -209,7 +216,7 @@
 <div class="main-box">
     <h1>회원 정보 수정 (ID: <%= userId %>)</h1>
     <form method="POST" action="">
-        <input type="hidden" name="csrf_token" value="<%= session.getAttribute("admin_csrf_token") %>">
+        <input type="hidden" name="csrf_token" value="<%= csrfToken %>">
         <div class="input-group">
             <label for="username">이름</label>
             <input type="text" id="username" name="username" value="<%= userId %>" maxlength="30" required>

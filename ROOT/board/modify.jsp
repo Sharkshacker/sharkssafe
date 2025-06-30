@@ -1,9 +1,8 @@
 <%@ page contentType="text/html; charset=UTF-8" pageEncoding="UTF-8" %>
-<%@ page import="java.sql.*, java.io.*, javax.servlet.http.*, javax.servlet.*, java.nio.file.Paths" %>
+<%@ page import="java.sql.*, java.io.*, javax.servlet.http.*, javax.servlet.*, java.nio.file.Paths, java.util.UUID" %>
 <%@ include file="../db.jsp" %>
 
 <%!
-    // HTML 태그 이스케이프 함수 (XSS 대응)
     public static String escapeHtml(String s) {
         if (s == null) return "";
         return s.replace("&", "&amp;")
@@ -24,7 +23,14 @@
     location.href = '../passlogic/login.jsp';
 </script>
 <%
-    return;
+        return;
+    }
+
+    // [CSRF 토큰 발급] 세션에 없으면 한 번만 생성
+    String csrf_token = (String) session.getAttribute("csrf_token");
+    if (csrf_token == null) {
+        csrf_token = UUID.randomUUID().toString().replace("-", "");
+        session.setAttribute("csrf_token", csrf_token);
     }
 
     int id = 0;
@@ -40,7 +46,6 @@
         return;
     }
 
-    // 작성자 검증 (권한 인가 강화)
     PreparedStatement ps = db_conn.prepareStatement("SELECT * FROM board_table WHERE board_idx = ?");
     ps.setInt(1, id);
     ResultSet board = ps.executeQuery();
@@ -66,18 +71,30 @@
         return;
     }
 
-    // POST 요청 처리
     if ("POST".equalsIgnoreCase(request.getMethod())) {
+        // [CSRF 토큰 검증]
+        String reqToken = request.getParameter("csrf_token");
+        String sessToken = (String) session.getAttribute("csrf_token");
+        if (reqToken == null || !reqToken.equals(sessToken)) {
+%>
+<script>
+    alert('잘못된 접근입니다.(CSRF 차단)');
+    history.back();
+</script>
+<%
+            return;
+        }
+
         request.setCharacterEncoding("UTF-8");
-        String title = escapeHtml(request.getParameter("title"));    // XSS 대응
-        String content = escapeHtml(request.getParameter("content")); // XSS 대응
+        String title = escapeHtml(request.getParameter("title"));
+        String content = escapeHtml(request.getParameter("content"));
         boolean secret = "1".equals(request.getParameter("secret"));
         boolean deleteFile = "1".equals(request.getParameter("delete_file"));
 
-        // 파일(blob) 처리
         InputStream fileBlob = null;
         String fileOriginalName = null;
         String sqlUpdate;
+
         if (deleteFile) {
             sqlUpdate = "UPDATE board_table SET board_title=?, board_content=?, board_file_blob=NULL, board_file_original_name=NULL, board_secret=? WHERE board_idx=?";
             PreparedStatement update = db_conn.prepareStatement(sqlUpdate);
@@ -87,11 +104,32 @@
             update.setInt(4, id);
             update.executeUpdate();
         } else {
-            Part filePart = request.getPart("uploaded_file");
-            if (filePart != null && filePart.getSize() > 0) {
-                fileBlob = filePart.getInputStream();
-                fileOriginalName = Paths.get(filePart.getSubmittedFileName()).getFileName().toString();
+            Part filePart = null;
+            try { filePart = request.getPart("uploaded_file"); } catch (Exception e) {}
 
+            if (filePart != null && filePart.getSize() > 0) {
+                fileOriginalName = Paths.get(filePart.getSubmittedFileName()).getFileName().toString();
+                String fileExt = fileOriginalName.substring(fileOriginalName.lastIndexOf('.') + 1).toLowerCase();
+                String mimeType = filePart.getContentType();
+
+                boolean isAllowed = false;
+                if ((mimeType.startsWith("image/") && fileExt.matches("jpg|jpeg|png|gif|bmp")) ||
+                    (fileExt.equals("xlsx") && mimeType.equals("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")) ||
+                    (fileExt.equals("hwp") && mimeType.equals("application/x-hwp"))) {
+                    isAllowed = true;
+                }
+
+                if (!isAllowed) {
+%>
+<script>
+    alert('허용되지 않은 파일 형식입니다. 이미지, 엑셀(xlsx), 한글(hwp)만 허용됩니다.');
+    history.back();
+</script>
+<%
+                    return;
+                }
+
+                fileBlob = filePart.getInputStream();
                 sqlUpdate = "UPDATE board_table SET board_title=?, board_content=?, board_file_blob=?, board_file_original_name=?, board_secret=? WHERE board_idx=?";
                 PreparedStatement update = db_conn.prepareStatement(sqlUpdate);
                 update.setString(1, title);
@@ -102,7 +140,6 @@
                 update.setInt(6, id);
                 update.executeUpdate();
             } else {
-                // 파일 업로드 없이 텍스트만 수정
                 sqlUpdate = "UPDATE board_table SET board_title=?, board_content=?, board_secret=? WHERE board_idx=?";
                 PreparedStatement update = db_conn.prepareStatement(sqlUpdate);
                 update.setString(1, title);
@@ -136,6 +173,7 @@
     <h1>글을 수정하세요.</h1>
     <hr/>
     <form method="POST" action="modify.jsp?id=<%= id %>" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="<%= csrf_token %>">
         <table class="writeTable">
             <tr>
                 <th width="50">제목</th>
@@ -153,11 +191,11 @@
                         String currentFileName = board.getString("board_file_original_name");
                         if (currentFileName != null && !currentFileName.isEmpty()) {
                     %>
-                        <br/><small>현재 파일: <%= escapeHtml(currentFileName) %></small>
-                        <div>
-                            <input type="checkbox" name="delete_file" value="1" id="delete_file_cb" />
-                            <label for="delete_file_cb">기존 파일 삭제</label>
-                        </div>
+                    <br/><small>현재 파일: <%= escapeHtml(currentFileName) %></small>
+                    <div>
+                        <input type="checkbox" name="delete_file" value="1" id="delete_file_cb" />
+                        <label for="delete_file_cb">기존 파일 삭제</label>
+                    </div>
                     <% } %>
                 </td>
             </tr>

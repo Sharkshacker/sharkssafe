@@ -3,6 +3,7 @@
 <%@ include file="../db.jsp" %>
 
 <%!
+    // HTML 엔터티 이스케이프 함수 (XSS 방지)
     public static String escapeHtml(String s) {
         if (s == null) return "";
         return s.replace("&", "&amp;")
@@ -10,6 +11,19 @@
                 .replace(">", "&gt;")
                 .replace("\"", "&quot;")
                 .replace("'", "&#x27;");
+    }
+
+    // 본문 내 URL을 자동으로 a태그로 변환 (엔터티 escape 이후 적용)
+    public static String autoLink(String text) {
+        if (text == null) return "";
+        // 정규식: http/https로 시작하는 부분만
+        String urlRegex = "(https?://[\\w\\-\\.\\?\\,\\'/\\+&%\\$#_=:@!;]+)";
+        // 엔터티 escape 먼저
+        String safe = escapeHtml(text);
+        // URL을 a태그로 감쌈
+        safe = safe.replaceAll(urlRegex, "<a href=\"$1\" target=\"_blank\">$1</a>");
+        // 줄바꿈 처리
+        return safe.replaceAll("\n", "<br>");
     }
 %>
 
@@ -82,11 +96,7 @@
 <%
             return;
         }
-
-        // 조회수 증가
         stmt.executeUpdate("UPDATE board_table SET board_views = board_views + 1 WHERE board_idx = " + id);
-
-        // 작성자 ID 가져오기
         userRs = stmt.executeQuery("SELECT user_id FROM user_table WHERE user_idx = " + writerIdx);
         String writerId = "";
         if (userRs.next()) {
@@ -112,10 +122,8 @@
         </div>
         <hr>
         <div class="content">
-            <%= escapeHtml(content).replaceAll("\n", "<br>") %>
+            <%= autoLink(content) %>
         </div>
-
-        <%-- 첨부파일 영역 (자바 블록으로 감싸기) --%>
         <%
         if (blob != null && originName != null && !originName.isEmpty()) {
         %>
@@ -128,7 +136,6 @@
         <%
         }
         %>
-
         <div class="viewButton">
             <ul>
                 <li>
@@ -145,7 +152,6 @@
             </ul>
         </div>
     </div>
-
     <script src="../js/modal.js"></script>
 </body>
 </html>

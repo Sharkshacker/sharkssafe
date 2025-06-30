@@ -8,14 +8,12 @@
     Integer selfUid = (Integer) session.getAttribute("idx");
     boolean isAdmin = "admin".equals(username);
 
-    // [🚨 핵심 수정: 관리자용 CSRF 토큰과 일반 사용자 토큰 분기 처리]
-    String expectedToken = isAdmin ? (String) session.getAttribute("admin_csrf_token")
-                                   : (String) session.getAttribute("csrf_token");
-    String submittedToken = request.getParameter("csrf_token");
-
+    // [CSRF 토큰 검증 - 통합 토큰 사용]
+    String sessToken = (String) session.getAttribute("csrf_token");
+    String reqToken = request.getParameter("csrf_token");
     if (!"POST".equalsIgnoreCase(request.getMethod())
-        || expectedToken == null || submittedToken == null
-        || !submittedToken.equals(expectedToken)) {
+        || sessToken == null || reqToken == null
+        || !reqToken.equals(sessToken)) {
 %>
 <script>
     alert('잘못된 접근입니다.');
