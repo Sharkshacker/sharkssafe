@@ -86,8 +86,8 @@
         }
 
         request.setCharacterEncoding("UTF-8");
-        String title = escapeHtml(request.getParameter("title"));
-        String content = escapeHtml(request.getParameter("content"));
+        String title = request.getParameter("title");
+        String content = request.getParameter("content");
         boolean secret = "1".equals(request.getParameter("secret"));
         boolean deleteFile = "1".equals(request.getParameter("delete_file"));
 
